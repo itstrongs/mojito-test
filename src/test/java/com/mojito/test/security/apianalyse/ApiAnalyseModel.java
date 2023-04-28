@@ -1,18 +1,14 @@
 package com.mojito.test.security.apianalyse;
 
 import com.alibaba.excel.EasyExcel;
+import com.alibaba.excel.ExcelWriter;
 import com.alibaba.excel.util.StringUtils;
-import com.alibaba.fastjson.JSON;
-import com.mojito.test.utils.BaseHelper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 import java.util.stream.Collectors;
 
 /**
@@ -24,7 +20,8 @@ import java.util.stream.Collectors;
 @Slf4j
 public class ApiAnalyseModel {
 
-    private final List<WebInfoExportBo> exportBos = new ArrayList<>();
+    //    private final List<WebInfoExportBo> exportBos = new ArrayList<>();
+    private final List<WebInfoBo> exportBos = new ArrayList<>();
 
     /**
      * 找出API站点特征和非API站点特征，如果这个站点全符合API站点特殊或全符合非API站点特征，那直接得出判断
@@ -45,16 +42,23 @@ public class ApiAnalyseModel {
         long apiCount = analyseResults.stream().filter(o -> o != null && o.getIsApiWeb()).count();
         long commonCount = analyseResults.stream().filter(o -> o != null && !o.getIsApiWeb()).count();
 
-        String result = String.format("符合%s条API站点特征，%s条普通站点特征，分析结果为：%s，是否既有API特征又有普通特征：%s",
-                apiCount, commonCount,
-                (apiCount > commonCount ? "API站点" : "普通站点"),
-                (apiCount != 0 && commonCount != 0 ? "是" : "否"));
-        log.info(result);
+        String result;
+        if (CollectionUtils.isEmpty(analyseResults)) {
+            result = "未识别";
+        } else {
+            result = apiCount > commonCount ? "API站点" : "普通站点";
+        }
+        String desc = String.format("符合%s条API站点特征，%s条普通站点特征，是否既有API特征又有普通特征：%s",
+                apiCount, commonCount, (apiCount != 0 && commonCount != 0 ? "是" : "否"));
+        log.info(desc);
 
-        WebInfoExportBo exportBo = BaseHelper.r2t(webInfoBo, WebInfoExportBo.class);
-        exportBo.setFeatures(CollectionUtils.isEmpty(analyseResults) ? null : JSON.toJSONString(analyseResults));
-        exportBo.setResult(result);
-        exportBos.add(exportBo);
+//        WebInfoExportBo exportBo = BaseHelper.r2t(webInfoBo, WebInfoExportBo.class);
+//        exportBo.setFeatures(CollectionUtils.isEmpty(analyseResults) ? null : JSON.toJSONString(analyseResults));
+//        exportBo.setResult(result);
+//        exportBo.setDesc(desc);
+//        exportBos.add(exportBo);
+        webInfoBo.setResult(result);
+        exportBos.add(webInfoBo);
     }
 
     private AnalyseResult userAgentAnalyse(WebInfoBo webInfoBo) {
@@ -133,12 +137,49 @@ public class ApiAnalyseModel {
     }
 
     public void finish() {
-        long count = exportBos.stream().filter(o -> StringUtils.isNotBlank(o.getFeatures())).count();
-        String scale = new BigDecimal(count).multiply(new BigDecimal(100)).divide(new BigDecimal(exportBos.size()), 2, RoundingMode.HALF_UP).toString();
-        log.info("特征不为空的比率：{}%", scale);
-        exportBos.forEach(o -> o.setScale(scale + "%"));
+//        long count = exportBos.stream().filter(o -> StringUtils.isNotBlank(o.getFeatures())).count();
+//        String scale = new BigDecimal(count).multiply(new BigDecimal(100)).divide(new BigDecimal(exportBos.size()), 2, RoundingMode.HALF_UP).toString();
+//        log.info("特征不为空的比率：{}%", scale);
+//        exportBos.forEach(o -> o.setScale(scale + "%"));
+
+//        String fileName = "/Users/mojito/Documents/分析结果.xlsx";
+//        try (ExcelWriter excelWriter = EasyExcel.write(fileName, WebInfoExportBo.class).build()) {
+//            excelWriter.write(exportBos.stream().filter(o -> "API站点".equals(o.getResult())).collect(Collectors.toList()),
+//                    EasyExcel.writerSheet("API站点").build());
+//            excelWriter.write(exportBos.stream().filter(o -> "普通站点".equals(o.getResult())).collect(Collectors.toList()),
+//                    EasyExcel.writerSheet("普通站点").build());
+//            excelWriter.write(exportBos.stream().filter(o -> "未识别".equals(o.getResult())).collect(Collectors.toList()),
+//                    EasyExcel.writerSheet("未识别").build());
+//        }
+
+        List<WebInfoExportBo> result = new ArrayList<>();
+        Map<String, List<WebInfoBo>> map = exportBos.stream().collect(Collectors.groupingBy(WebInfoBo::getDest_hostname));
+        map.forEach((k, v) -> {
+            long apiCount = v.stream().filter(o -> "API站点".equals(o.getResult())).count();
+            long commonCount = v.stream().filter(o -> "普通站点".equals(o.getResult())).count();
+            long unknownCount = v.stream().filter(o -> "未识别".equals(o.getResult())).count();
+
+            result.add(new WebInfoExportBo()
+                    .setDest_hostname(k)
+                    .setApiCount(apiCount)
+                    .setCommonCount(commonCount)
+                    .setUnknownCount(unknownCount)
+                    .setApiScale(getScale(apiCount, v.size()))
+                    .setCommonScale(getScale(commonCount, v.size()))
+            );
+        });
 
         String fileName = "/Users/mojito/Documents/分析结果.xlsx";
-        EasyExcel.write(fileName, WebInfoExportBo.class).sheet("Sheet").doWrite(exportBos);
+        try (ExcelWriter excelWriter = EasyExcel.write(fileName, WebInfoExportBo.class).build()) {
+            excelWriter.write(result.stream().sorted(Comparator.comparing(WebInfoExportBo::getApiCount).reversed())
+                            .collect(Collectors.toList()),
+                    EasyExcel.writerSheet("Sheet").build());
+        }
+    }
+
+    private String getScale(long count, Integer total) {
+        return new BigDecimal(count)
+                .multiply(new BigDecimal(100))
+                .divide(new BigDecimal(total), 2, RoundingMode.HALF_UP) + "%";
     }
 }

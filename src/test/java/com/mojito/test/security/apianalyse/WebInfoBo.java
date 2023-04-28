@@ -24,4 +24,6 @@ public class WebInfoBo {
 
     @ExcelProperty(index = 15)
     private String user_agent;
+
+    private String result;
 }
