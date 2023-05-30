@@ -1,6 +1,5 @@
 package com.mojito.test;
 
-import com.mojito.test.utils.log;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -10,8 +9,13 @@ import org.junit.jupiter.api.Test;
 public class CommonTest {
 
     @Test
-    public void test() {
-//        String str=;
-        log.info("test $1, aaa $2".replace("$1","haha").replace("$2","seffsdf"));
+    public void test() throws InterruptedException {
+        int from = 0;
+        int batch = 1000;
+        do {
+            int fromVal = from++ * batch;
+            System.out.println(fromVal);
+            Thread.sleep(1000);
+        } while (from > 0);
     }
 }
